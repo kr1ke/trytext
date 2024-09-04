@@ -1,0 +1,100 @@
+variables:
+  IMAGE_NAME: wiki-page-editor
+  SHELL_TAG: srv2326
+  DOCKER_TAG: srv2326docker
+  SHELL_TAG_DEV: srv2326
+  DOCKER_TAG_DEV: srv2326docker
+  PROD_SHELL_TAG: srv2360
+  IMAGE_FULL_NAME: ${CI_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}
+  WEB_NETWORK: ndb_net
+
+stages:
+  - sonarqube-check
+  - application_build_dev
+  - application_build_prod
+  - deploy_dev
+  - deploy_prod
+
+
+sonarqube-check:
+  stage: sonarqube-check
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  tags:
+    - ${DOCKER_TAG}
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - sonar-scanner
+  allow_failure: true
+  only:
+    - develop
+
+application_build_dev:
+  stage: application_build_dev
+  tags:
+    - ${DOCKER_TAG}
+  image: docker:20.10
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: ""
+  only:
+    - develop
+  services:
+    - docker:dind
+  script:
+    - cp ${ENV_DEV} ./.env
+    - docker build -t ${IMAGE_FULL_NAME} .
+    - docker push ${IMAGE_FULL_NAME}
+    - docker tag ${IMAGE_FULL_NAME} ${CI_REGISTRY}/${IMAGE_NAME}:latest
+    - docker push ${CI_REGISTRY}/${IMAGE_NAME}:latest
+
+application_build_prod:
+  stage: application_build_prod
+  tags:
+    - ${DOCKER_TAG}
+  image: docker:20.10
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: ""
+  only:
+    - main
+  services:
+    - docker:dind
+  script:
+    - cp ${ENV_PROD} ./.env
+    - docker build -t ${IMAGE_FULL_NAME} .
+    - docker push ${IMAGE_FULL_NAME}
+    - docker tag ${IMAGE_FULL_NAME} ${CI_REGISTRY}/${IMAGE_NAME}:latest
+    - docker push ${CI_REGISTRY}/${IMAGE_NAME}:latest
+
+deploy_dev:
+  stage: deploy_dev
+  only:
+    - develop
+  tags:
+    - ${SHELL_TAG_DEV}
+  script:
+    - if [[ $(docker ps -a | grep -wc ${IMAGE_NAME}) > 0 ]]; then docker rm -f ${IMAGE_NAME}; else echo Контейнер еще не был создан; fi
+    - docker pull ${IMAGE_FULL_NAME}
+    - docker run -d --name ${IMAGE_NAME} --network=ndb_net -p 1234:1234 --restart=always ${IMAGE_FULL_NAME}
+
+
+deploy_prod:
+  stage: deploy_prod
+  only:
+    - main
+  tags:
+    - ${PROD_SHELL_TAG}
+  script:
+    - if [[ $(docker ps -a | grep -wc ${IMAGE_NAME}) > 0 ]]; then docker rm -f ${IMAGE_NAME}; else echo Контейнер еще не был создан; fi
+    - docker pull ${IMAGE_FULL_NAME}
+    - docker run -d --name ${IMAGE_NAME} --network=ndb_net -p 1234:1234 -p 3005:3000 --restart=always ${IMAGE_FULL_NAME}
