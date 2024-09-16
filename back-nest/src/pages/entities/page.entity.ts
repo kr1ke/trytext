@@ -13,6 +13,9 @@ export class Page {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ nullable: true, default: `новая страница ${new Date()}` })
+  name: string;
+
   @Column({ unique: true })
   hash: string;
 

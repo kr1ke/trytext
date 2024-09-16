@@ -3,7 +3,6 @@ import fetch from 'node-fetch'
 import { Database } from '@hocuspocus/extension-database'
 import 'dotenv/config'
 import pkg from 'pg'
-// import {TiptapTransformer} from "@hocuspocus/transformer";
 
 const { Client } = pkg
 
@@ -68,6 +67,5 @@ const server = Server.configure({
   ]
 })
 
-// запускаем вебсокет
 // запускаем вебсокет
 server.listen()
